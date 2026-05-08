@@ -1,5 +1,6 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytest
+from unittest.mock import patch
 
 
 def test_remap_datetime_shifts_by_offset():
@@ -22,25 +23,31 @@ def test_remap_datetime_returns_original_on_parse_error():
     assert result == "not-a-date"
 
 
-def test_should_exclude_future_call():
-    # ended 2024-06-01 + 730d ≈ 2026-05-31 > utcnow (2026-05-08) → exclude
+def test_should_exclude_future_call(monkeypatch):
+    # ended 2024-06-01 + 730d = 2026-05-31; mocked now = 2026-05-08 → exclude
     from src.time_machine import should_exclude_call
+    import src.time_machine as tm
+    monkeypatch.setattr(tm, "_utcnow", lambda: datetime(2026, 5, 8))
     record = {"metaData": {"id": "f", "started": "2024-06-01T10:00:00Z",
                            "ended": "2024-06-01T11:00:00Z", "duration": 3600}}
     assert should_exclude_call(record, 730) is True
 
 
-def test_should_include_past_call():
-    # ended 2024-04-01 + 730d ≈ 2026-03-31 < utcnow (2026-05-08) → include
+def test_should_include_past_call(monkeypatch):
+    # ended 2024-04-01 + 730d = 2026-03-31; mocked now = 2026-05-08 → include
     from src.time_machine import should_exclude_call
+    import src.time_machine as tm
+    monkeypatch.setattr(tm, "_utcnow", lambda: datetime(2026, 5, 8))
     record = {"metaData": {"id": "p", "started": "2024-04-01T10:00:00Z",
                            "ended": "2024-04-01T11:00:00Z", "duration": 3600}}
     assert should_exclude_call(record, 730) is False
 
 
-def test_should_exclude_uses_duration_when_no_ended():
-    # started 2024-05-20 + 3600s = 2024-05-20T11:00 + 730d ≈ 2026-05-19 > now → exclude
+def test_should_exclude_uses_duration_when_no_ended(monkeypatch):
+    # started 2024-05-20 + 3600s + 730d = 2026-05-19T11:00; mocked now = 2026-05-08 → exclude
     from src.time_machine import should_exclude_call
+    import src.time_machine as tm
+    monkeypatch.setattr(tm, "_utcnow", lambda: datetime(2026, 5, 8))
     record = {"metaData": {"id": "d", "started": "2024-05-20T10:00:00Z", "duration": 3600}}
     assert should_exclude_call(record, 730) is True
 

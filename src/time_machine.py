@@ -1,12 +1,16 @@
 import copy
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from dateutil import parser as dateutil_parser
 
 logger = logging.getLogger(__name__)
 
 _DATETIME_FIELDS = {"started", "ended", "scheduled", "created", "updated"}
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 def remap_datetime(dt_str: str, offset_days: int) -> str:
@@ -25,14 +29,14 @@ def should_exclude_call(record: dict, offset_days: int) -> bool:
 
         if ended_str:
             ended = dateutil_parser.parse(ended_str).replace(tzinfo=None)
-            return (ended + timedelta(days=offset_days)) > datetime.utcnow()
+            return (ended + timedelta(days=offset_days)) > _utcnow()
 
         started_str = meta.get("started")
         duration = meta.get("duration", 0)
         if started_str:
             started = dateutil_parser.parse(started_str).replace(tzinfo=None)
             ended = started + timedelta(seconds=int(duration))
-            return (ended + timedelta(days=offset_days)) > datetime.utcnow()
+            return (ended + timedelta(days=offset_days)) > _utcnow()
 
         return False
     except Exception as exc:
@@ -41,12 +45,20 @@ def should_exclude_call(record: dict, offset_days: int) -> bool:
 
 
 def _remap_dict(d: dict, offset_days: int) -> dict:
+    result = {}
     for key, value in d.items():
         if isinstance(value, str) and key in _DATETIME_FIELDS:
-            d[key] = remap_datetime(value, offset_days)
+            result[key] = remap_datetime(value, offset_days)
         elif isinstance(value, dict):
-            d[key] = _remap_dict(value, offset_days)
-    return d
+            result[key] = _remap_dict(value, offset_days)
+        elif isinstance(value, list):
+            result[key] = [
+                _remap_dict(item, offset_days) if isinstance(item, dict) else item
+                for item in value
+            ]
+        else:
+            result[key] = value
+    return result
 
 
 def remap_record(record: dict, offset_days: int) -> dict:
