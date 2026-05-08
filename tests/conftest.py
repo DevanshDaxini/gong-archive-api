@@ -74,7 +74,7 @@ def client(archive_root, tmp_path, monkeypatch):
     offset_file = tmp_path / "offset.json"
     monkeypatch.setenv("ARCHIVE_ROOT", str(archive_root))
     monkeypatch.setenv("ARCHIVE_START_DATE", "2024-05-01")
-    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-06")
+    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-01")
 
     import src.config as cfg_mod
     monkeypatch.setattr(cfg_mod, "OFFSET_FILE", offset_file)
