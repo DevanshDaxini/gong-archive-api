@@ -15,6 +15,9 @@ class Config:
         self.archive_root = Path(
             os.environ.get("ARCHIVE_ROOT", str(Path.home() / ".archive"))
         )
+        # ARCHIVE_START_DATE: real date your oldest call data begins (e.g. "2024-05-01")
+        # VIRTUAL_START_DATE: date you want the archive to appear to start from (e.g. today)
+        # Difference between them = TIME_OFFSET, used to filter and remap all timestamps
         archive_start_str = os.environ.get("ARCHIVE_START_DATE", "2024-05-01")
         virtual_start_str = os.environ.get("VIRTUAL_START_DATE", "2026-05-06")
 
