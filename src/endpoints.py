@@ -15,6 +15,17 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
+def _wrap_call_record(remapped_record: dict) -> dict:
+    meta = remapped_record.get("metaData", remapped_record)
+    return {
+        "id": meta.get("id"),
+        "started": meta.get("started"),
+        "ended": meta.get("ended"),
+        "title": meta.get("title"),
+        "raw": remapped_record,
+    }
+
+
 def _archive_months(archive_root: Path, from_dt: datetime, to_dt: datetime) -> list[Path]:
     paths = []
     current = from_dt.replace(day=1)
@@ -88,7 +99,8 @@ async def extensive(request: Request, body: ExtensiveRequest) -> JSONResponse:
                 try:
                     record = json.loads(line)
                     if not should_exclude_call(record, offset):
-                        calls.append(remap_record(record, offset))
+                        remapped = remap_record(record, offset)
+                        calls.append(_wrap_call_record(remapped))
                 except json.JSONDecodeError:
                     logger.warning(f"Malformed JSON in {member_name}")
 

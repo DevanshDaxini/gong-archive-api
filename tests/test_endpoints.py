@@ -14,7 +14,7 @@ def test_extensive_returns_past_calls(client):
         "filter": {"fromDateTime": "2026-03-01T00:00:00Z", "toDateTime": "2026-05-01T00:00:00Z"}
     })
     assert resp.status_code == 200
-    ids = [c["metaData"]["id"] for c in resp.json()["calls"]]
+    ids = [c["id"] for c in resp.json()["calls"]]
     assert PAST_CALL_ID in ids
 
 
@@ -24,7 +24,7 @@ def test_extensive_excludes_future_calls(client):
         "filter": {"fromDateTime": "2026-03-01T00:00:00Z", "toDateTime": "2026-08-01T00:00:00Z"}
     })
     assert resp.status_code == 200
-    ids = [c["metaData"]["id"] for c in resp.json()["calls"]]
+    ids = [c["id"] for c in resp.json()["calls"]]
     assert FUTURE_CALL_ID not in ids
 
 
@@ -34,9 +34,9 @@ def test_extensive_remaps_timestamps(client):
     })
     assert resp.status_code == 200
     calls = resp.json()["calls"]
-    past = next(c for c in calls if c["metaData"]["id"] == PAST_CALL_ID)
+    past = next(c for c in calls if c["id"] == PAST_CALL_ID)
     # Original started 2024-04-01, after +735d should be in 2026
-    assert past["metaData"]["started"].startswith("2026-")
+    assert past["started"].startswith("2026-")
 
 
 def test_extensive_returns_total_records(client):
