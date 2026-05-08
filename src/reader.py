@@ -17,10 +17,10 @@ class ArchiveReader:
                 with _xz.open(tar_path) as xz_file:
                     with tarfile.open(fileobj=xz_file) as tar:
                         return self._extract(tar, member_name, tar_path)
-            except (FileNotFoundError, KeyError):
+            except FileNotFoundError:
                 raise
-            except Exception:
-                pass  # fall through to sequential decompress
+            except Exception as exc:
+                logger.debug("xz path failed for %s (%s: %s), using sequential fallback", tar_path, type(exc).__name__, exc)
         with tarfile.open(tar_path, "r:xz") as tar:
             return self._extract(tar, member_name, tar_path)
 
@@ -42,4 +42,4 @@ class ArchiveReader:
             raise FileNotFoundError(f"Member {member_name!r} not in {tar_path}")
         if f is None:
             raise FileNotFoundError(f"Member {member_name!r} not in {tar_path}")
-        return f.read().decode("utf-8")
+        return f.read().decode("utf-8", errors="replace")

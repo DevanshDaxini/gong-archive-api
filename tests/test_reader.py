@@ -39,3 +39,13 @@ def test_read_tx_member(sample_archive):
     reader = ArchiveReader()
     content = reader.read_member(str(sample_archive), "05/call001.tx.jsonl")
     assert json.loads(content.strip())["text"] == "Hello"
+
+
+def test_fallback_sequential_path(sample_archive, monkeypatch):
+    import src.reader as reader_mod
+    monkeypatch.setattr(reader_mod, "_HAS_XZ", False)
+    reader = ArchiveReader()
+    members = reader.list_members(str(sample_archive))
+    assert "05/call001.metadata.jsonl" in members
+    content = reader.read_member(str(sample_archive), "05/call001.metadata.jsonl")
+    assert "call001" in content
