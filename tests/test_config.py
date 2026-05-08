@@ -1,8 +1,6 @@
 import json
 from datetime import datetime
 
-import pytest
-
 
 def test_config_creates_offset_file(tmp_path, monkeypatch):
     offset_file = tmp_path / "offset.json"
