@@ -11,9 +11,9 @@ from fastapi.testclient import TestClient
 PAST_CALL_ID = "call-past-001"
 FUTURE_CALL_ID = "call-future-001"
 
-# offset=730 days; cutoff = utcnow() - 730d ≈ 2024-05-08
-# Past call ended 2024-04-01: 2024-04-01+730 ≈ 2026-03-31 < now → include
-# Future call ended 2024-06-01: 2024-06-01+730 ≈ 2026-05-31 > now → exclude
+# offset=735 days (2026-05-06 - 2024-05-01); cutoff = utcnow() - 735d ≈ 2024-05-04
+# Past call ended 2024-04-01: 2024-04-01+735 = 2026-04-06 < now → include
+# Future call ended 2024-06-01: 2024-06-01+735 = 2026-06-06 > now → exclude
 PAST_META = {
     "metaData": {
         "id": PAST_CALL_ID,
@@ -74,7 +74,7 @@ def client(archive_root, tmp_path, monkeypatch):
     offset_file = tmp_path / "offset.json"
     monkeypatch.setenv("ARCHIVE_ROOT", str(archive_root))
     monkeypatch.setenv("ARCHIVE_START_DATE", "2024-05-01")
-    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-01")
+    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-06")
 
     import src.config as cfg_mod
     monkeypatch.setattr(cfg_mod, "OFFSET_FILE", offset_file)
