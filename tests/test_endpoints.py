@@ -96,3 +96,11 @@ def test_transcript_unknown_call_returns_404(client):
     assert resp.status_code == 404
     body = resp.json()
     assert body["error"] == "Call not found"
+
+
+def test_extensive_invalid_dates_returns_400(client):
+    resp = client.post("/v2/calls/extensive", json={
+        "filter": {"fromDateTime": "not-a-date", "toDateTime": "also-not-a-date"}
+    })
+    assert resp.status_code == 400
+    assert resp.json()["error"] == "Invalid date range"

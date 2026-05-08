@@ -35,8 +35,21 @@ async def extensive(request: Request, body: ExtensiveRequest) -> JSONResponse:
     reader = ArchiveReader()
     offset = config.offset_days
 
-    from_dt = dateutil_parser.parse(body.filter.fromDateTime).replace(tzinfo=None)
-    to_dt = dateutil_parser.parse(body.filter.toDateTime).replace(tzinfo=None)
+    try:
+        from_dt = dateutil_parser.parse(body.filter.fromDateTime).replace(tzinfo=None)
+        to_dt = dateutil_parser.parse(body.filter.toDateTime).replace(tzinfo=None)
+    except Exception:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": "Invalid date range",
+                "message": "fromDateTime or toDateTime could not be parsed",
+                "details": {
+                    "fromDateTime": body.filter.fromDateTime,
+                    "toDateTime": body.filter.toDateTime,
+                },
+            },
+        )
     hist_from = from_dt - timedelta(days=offset)
     hist_to = to_dt - timedelta(days=offset)
 
