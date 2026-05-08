@@ -40,8 +40,13 @@ def build_index(config: Config) -> dict[str, tuple[str, str]]:
                     meta = record.get("metaData", record)
                     call_id = meta.get("id")
                     if call_id:
+                        if call_id in index:
+                            logger.warning(
+                                "Duplicate call_id %r: overwriting %s with %s",
+                                call_id, index[call_id][0], tar_path
+                            )
                         index[call_id] = (str(tar_path), member_name)
-                except json.JSONDecodeError:
-                    logger.warning(f"Malformed JSON line in {member_name}")
+                except json.JSONDecodeError as exc:
+                    logger.warning("Malformed JSON line in %s (%.80r): %s", member_name, line, exc)
 
     return index

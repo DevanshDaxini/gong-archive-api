@@ -1,7 +1,5 @@
 import json
 import pytest
-from pathlib import Path
-
 
 @pytest.fixture
 def config_with_archive(tmp_path, make_tar_xz, monkeypatch):
