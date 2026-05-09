@@ -1,7 +1,7 @@
 # BUILD_PLAN.md: Gong Archive API
 
 ## Overview
-Building a Python FastAPI service that serves archived Gong call data via two HTTP endpoints with a "Time Machine" feature that shifts historical timestamps to appear current without transforming the actual call dates.
+Building a Python FastAPI service that serves archived Gong call data via two HTTP endpoints with a "Time Machine" feature that dynamically shifts historical timestamps to appear current without transforming the actual call dates. The TIME_OFFSET is recalculated at each service startup, ensuring the data window continuously advances with real time.
 
 ## Project Structure
 ```
@@ -10,46 +10,45 @@ gong-archive-api/
 ├── BUILD_PLAN.md (this file)
 ├── requirements.txt
 ├── .gitignore
-├── offset.json (auto-generated at first startup)
 ├── src/
 │   ├── __init__.py
 │   ├── main.py              (FastAPI app entry point)
-│   ├── config.py            (config loading, TIME_OFFSET calculation)
+│   ├── config.py            (config loading, dynamic TIME_OFFSET calculation)
 │   ├── reader.py            (archive reader with python-xz random access)
 │   ├── models.py            (Pydantic models for requests/responses)
 │   ├── endpoints.py         (POST /v2/calls/extensive and /v2/calls/transcript)
 │   ├── time_machine.py      (remapping and gating logic)
 │   └── index.py             (startup indexing: CallID -> TarPath)
 └── tests/
-    └── __init__.py
+    ├── __init__.py
+    ├── conftest.py          (test fixtures and mocking)
+    ├── test_config.py
+    ├── test_endpoints.py
+    ├── test_index.py
+    ├── test_reader.py
+    └── test_time_machine.py
 ```
 
-## Branch Strategy (gstack)
-Each phase is built on a separate branch. After testing and verification, merge to main before starting the next phase.
+## Status
+**Phase 1 (COMPLETE):** FastAPI setup, dynamic TIME_OFFSET calculation, comprehensive test suite (32 tests passing).
 
-- `phase/1-scaffold` — FastAPI setup, config loading, offset persistence
-- `phase/2-archive-reader` — Archive reader with python-xz, startup indexing
-- `phase/3-time-machine` — Timestamp remapping, gating logic
-- `phase/4-endpoints` — API endpoints, request validation, error handling
-- `phase/5-e2e-test` — Full integration test
+Remaining phases: 2-5 (not yet started)
 
 ## Critical Design Decisions
 
-### Time Machine Logic
-- `TIME_OFFSET = VIRTUAL_START_DATE - ARCHIVE_START_DATE` (e.g., 730 days)
-- `VIRTUAL_NOW = datetime.utcnow()` (the service uses the actual current system time as the boundary)
-- **Important:** The offset shifts the reference point in time, NOT the call dates themselves
-  - Original call: May 3, 2024 at 7:00 AM
-  - After offset applied for filtering: Still May 3, 2024 at 7:00 AM (date unchanged)
-  - System compares: "Is May 3, 2024 after May 8, 2026?" → No, include call
-  - User sees: May 3, 2024 at 7:00 AM (original timestamp)
+### Time Machine Logic (Dynamic)
+- `TIME_OFFSET = (today - ARCHIVE_START_DATE).days` — calculated fresh at each startup
+- Example: ARCHIVE_START_DATE = 2025-01-01, today = 2026-05-08 → offset = 493 days
+- `GATING_BOUNDARY = datetime.now(UTC)` (the service uses the actual current system time as the boundary)
+- **Key benefit:** Data window continuously advances with real time. Restart tomorrow, offset increases by 1.
+- **Why:** Solves the "not running once a month" issue — archive appears to be a live feed that grows incrementally.
 
-### Offset Persistence
-- **Location:** `./offset.json` (in project root)
-- **Format:** `{ "offset_days": 730 }`
-- **Lifecycle:** Auto-generated on first startup, calculated from `ARCHIVE_START_DATE` and `VIRTUAL_START_DATE`
-- **Immutability:** Read-only after creation; same offset is used for all subsequent runs
-- **Consistency:** Ensures same data is returned across sessions (reproducibility)
+**How it works:**
+- Historical call: May 8, 2025 at 10:00 AM
+- With offset (493 days): Appears as May 8, 2026 at 10:00 AM
+- If service restarts on May 9, offset becomes 494 days
+- Same call now appears as May 9, 2026 at 10:00 AM
+- Boundary always moves forward with real time
 
 ### Archive Access
 - **Library:** `python-xz` (pip-installable, enables random access on `.xz` files)
@@ -112,55 +111,43 @@ Startup index must store: `CallID -> (tar_path, member_name)`
 
 ---
 
-## Phase 1: Scaffold & Config (FastAPI Setup)
+## Phase 1: Scaffold & Config (FastAPI Setup) — COMPLETE
 
-**Branch:** `phase/1-scaffold`
+**Status:** ✓ Implemented and tested (32 tests passing)
 
 **Deliverables:**
-1. FastAPI app structure with basic health check endpoint
-2. Config loading from environment variables (or config file):
+1. ✓ FastAPI app with GET `/health` endpoint returning `{"status": "ok"}`
+2. ✓ Config loading from environment:
    - `ARCHIVE_ROOT`: Path to archive directory (default: `~/.archive`)
-   - `ARCHIVE_START_DATE`: ISO 8601 date (e.g., `2024-05-01`)
-   - `VIRTUAL_START_DATE`: ISO 8601 date (e.g., `2026-05-06`)
-3. TIME_OFFSET calculation: `VIRTUAL_START_DATE - ARCHIVE_START_DATE` in days
-4. Offset persistence logic:
-   - On startup: Check if `./offset.json` exists
-   - If not: Calculate offset, save to `./offset.json`, log the value
-   - If yes: Read offset from file (ignore env vars, use persisted value)
-5. Logging at startup: "TIME_OFFSET: {X} days, shifted from {ARCHIVE_START_DATE} to {VIRTUAL_START_DATE}"
-6. `requirements.txt` with FastAPI, uvicorn, python-dateutil, python-xz
+   - `ARCHIVE_START_DATE`: ISO 8601 date (e.g., `2025-01-01`)
+3. ✓ Dynamic TIME_OFFSET calculation: `(today - ARCHIVE_START_DATE).days`
+   - Calculated fresh at every startup
+   - No persistence; no offset.json file
+   - No VIRTUAL_START_DATE needed
+4. ✓ Logging at startup: `"TIME_OFFSET: {X} days (calculated from ARCHIVE_START_DATE: {date})"`
+5. ✓ Modern UTC handling: `datetime.now(UTC)` (no deprecated `utcnow()`)
+6. ✓ `requirements.txt` with FastAPI, uvicorn, python-dateutil, python-xz
 
-**Testing:**
-- Verify config loads correctly from environment
-- Verify offset is calculated and saved on first run
-- Verify offset is read from file on second run (same value)
-- Verify logging output is correct
-- Run with `/superpowers`: `python -m uvicorn src.main:app --reload`
+**Tests Implemented (src/tests/):**
+- `test_config.py`: 3 tests
+  - Dynamic offset calculation correct
+  - Fresh calculation on each startup
+  - Archive root loaded from env
+- `test_endpoints.py`: 11 tests (health check + endpoint tests)
+- `test_index.py`: 4 tests
+- `test_reader.py`: 5 tests
+- `test_time_machine.py`: 9 tests
 
-**Prompt for Sonnet:**
-```
-Build Phase 1 of the Gong Archive API: Scaffold & Config.
+**Test Fixtures (tests/conftest.py):**
+- Mock current time to 2026-05-08 for predictable testing
+- Test data: past and future calls with correct offsets
+- Dynamic datetime mocking across all modules
 
-Requirements:
-1. Create a FastAPI app in src/main.py with a basic GET /health endpoint that returns {"status": "ok"}
-2. In src/config.py:
-   - Load ARCHIVE_ROOT, ARCHIVE_START_DATE, VIRTUAL_START_DATE from environment variables
-   - Use dateutil.parser.parse() to parse dates
-   - Calculate TIME_OFFSET as (VIRTUAL_START_DATE - ARCHIVE_START_DATE).days
-   - Check if ./offset.json exists
-     - If not: Calculate offset, save as {"offset_days": <value>}, log "TIME_OFFSET: {X} days, shifted from {ARCHIVE_START_DATE} to {VIRTUAL_START_DATE}"
-     - If yes: Read offset from file and use that value (ignore env vars)
-   - Return a Config object with all values
-3. In src/main.py startup event:
-   - Load config
-   - Log the offset info
-4. Create requirements.txt with: fastapi, uvicorn, python-dateutil, python-xz
-5. Test the app locally with /superpowers to verify:
-   - Config loads correctly
-   - Offset is saved to ./offset.json on first run
-   - Offset is read from file on second run
-   - Logging is correct
-```
+**Key Implementation Notes:**
+- Offset is recalculated every startup → data window advances daily
+- No config file persistence needed
+- Datetime operations use modern UTC (Python 3.9+ compatible)
+- All 32 tests pass without deprecation warnings
 
 ---
 
@@ -494,7 +481,8 @@ pytest==7.4.3
 ## Notes
 
 - All timestamps in responses are ISO 8601 with `Z` suffix
-- Transcript `start_ms` is relative to call start (not shifted)
+- Transcript `start_ms` is relative to call start (not remapped)
 - Call dates are NOT transformed; only the filtering boundary shifts
-- Offset is immutable after first run (ensures reproducibility)
+- **Offset is dynamic:** Recalculated fresh at each startup, advancing the data window daily
+- No offset.json persistence — eliminates need for manual offset management or rebuilds
 - All archive operations are wrapped in try/except (graceful degradation)
