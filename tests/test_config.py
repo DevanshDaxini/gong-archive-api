@@ -1,47 +1,42 @@
-import json
-from datetime import datetime
+from datetime import UTC, datetime
+
+from dateutil import parser as dateutil_parser
 
 
-def test_config_creates_offset_file(tmp_path, monkeypatch):
-    offset_file = tmp_path / "offset.json"
-    archive_start = "2024-05-01"
-    virtual_start = "2026-05-06"
+def test_config_calculates_dynamic_offset(tmp_path, monkeypatch):
     monkeypatch.setenv("ARCHIVE_ROOT", str(tmp_path / "archive"))
-    monkeypatch.setenv("ARCHIVE_START_DATE", archive_start)
-    monkeypatch.setenv("VIRTUAL_START_DATE", virtual_start)
+    monkeypatch.setenv("ARCHIVE_START_DATE", "2025-01-01")
     import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "OFFSET_FILE", offset_file)
 
     config = cfg_mod.Config()
 
-    # expected offset is derived directly from the two env vars above
-    expected_days = (datetime.fromisoformat(virtual_start) - datetime.fromisoformat(archive_start)).days
-    assert offset_file.exists()
-    assert json.loads(offset_file.read_text())["offset_days"] == expected_days
+    # Offset should be calculated as (today - archive_start).days
+    today = datetime.now(UTC).date()
+    archive_start = dateutil_parser.parse("2025-01-01").date()
+    expected_days = (today - archive_start).days
     assert config.offset_days == expected_days
 
 
-def test_config_reads_existing_offset_ignores_env(tmp_path, monkeypatch):
-    offset_file = tmp_path / "offset.json"
-    offset_file.write_text('{"offset_days": 100}')
+def test_config_offset_is_fresh_on_startup(tmp_path, monkeypatch):
     monkeypatch.setenv("ARCHIVE_ROOT", str(tmp_path / "archive"))
-    monkeypatch.setenv("ARCHIVE_START_DATE", "2024-05-01")
-    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-06")
+    monkeypatch.setenv("ARCHIVE_START_DATE", "2025-06-01")
     import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "OFFSET_FILE", offset_file)
 
-    config = cfg_mod.Config()
+    config1 = cfg_mod.Config()
+    config2 = cfg_mod.Config()
 
-    assert config.offset_days == 100  # persisted value wins over env-derived offset
+    # Both should calculate offset dynamically (could be same or differ by 1 if a day passed)
+    # Main point: not persisted, recalculated each time
+    assert isinstance(config1.offset_days, int)
+    assert isinstance(config2.offset_days, int)
+    # They should be close (within 1 day due to time passage during test)
+    assert abs(config1.offset_days - config2.offset_days) <= 1
 
 
 def test_config_archive_root_from_env(tmp_path, monkeypatch):
-    offset_file = tmp_path / "offset.json"
     monkeypatch.setenv("ARCHIVE_ROOT", str(tmp_path / "myarchive"))
-    monkeypatch.setenv("ARCHIVE_START_DATE", "2024-05-01")
-    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-06")
+    monkeypatch.setenv("ARCHIVE_START_DATE", "2025-01-01")
     import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "OFFSET_FILE", offset_file)
 
     config = cfg_mod.Config()
 

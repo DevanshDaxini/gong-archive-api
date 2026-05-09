@@ -35,7 +35,7 @@ def test_extensive_remaps_timestamps(client):
     assert resp.status_code == 200
     calls = resp.json()["calls"]
     past = next(c for c in calls if c["id"] == PAST_CALL_ID)
-    # Original started 2024-04-01, after +735d should be in 2026
+    # Original started 2024-04-30, after +738d should be in 2026
     assert past["started"].startswith("2026-")
 
 
@@ -49,7 +49,7 @@ def test_extensive_returns_total_records(client):
 
 
 def test_extensive_future_range_returns_400(client):
-    # hist_from = 2030-01-01 - 735d ≈ 2027-12-27 > utcnow → 400
+    # hist_from = 2030-01-01 - 738d ≈ 2027-12-29 > utcnow(2026-05-08) → 400
     resp = client.post("/v2/calls/extensive", json={
         "filter": {"fromDateTime": "2030-01-01T00:00:00Z", "toDateTime": "2030-02-01T00:00:00Z"}
     })
@@ -60,15 +60,17 @@ def test_extensive_future_range_returns_400(client):
 
 
 def test_extensive_400_includes_offset_details(client):
-    from datetime import datetime
+    from datetime import UTC, date, datetime
+    from tests.conftest import TEST_CURRENT_TIME
     resp = client.post("/v2/calls/extensive", json={
         "filter": {"fromDateTime": "2030-01-01T00:00:00Z", "toDateTime": "2030-02-01T00:00:00Z"}
     })
     assert resp.status_code == 400
     details = resp.json()["details"]
-    archive_start = datetime.fromisoformat("2024-05-01")
-    virtual_start = datetime.fromisoformat("2026-05-06")
-    expected_days = (virtual_start - archive_start).days
+    # Dynamic offset: today - ARCHIVE_START_DATE
+    archive_start = date(2024, 5, 1)
+    today = TEST_CURRENT_TIME.date()
+    expected_days = (today - archive_start).days
     assert f"{expected_days} days" == details["offset"]
 
 

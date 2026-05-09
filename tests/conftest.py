@@ -2,7 +2,9 @@ import io
 import json
 import lzma
 import tarfile
+from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,14 +13,15 @@ from fastapi.testclient import TestClient
 PAST_CALL_ID = "call-past-001"
 FUTURE_CALL_ID = "call-future-001"
 
-# offset=735 days (2026-05-06 - 2024-05-01); cutoff = utcnow() - 735d ≈ 2024-05-04
-# Past call ended 2024-04-01: 2024-04-01+735 = 2026-04-06 < now → include
-# Future call ended 2024-06-01: 2024-06-01+735 = 2026-06-06 > now → exclude
+# Test setup: Mock current time to 2026-05-08, ARCHIVE_START_DATE = 2024-05-01
+# Expected offset = 738 days
+# Past call ended 2024-04-30: 2024-04-30+738 = 2026-05-07 < 2026-05-08 → include
+# Future call ended 2024-05-15: 2024-05-15+738 = 2026-05-22 > 2026-05-08 → exclude
 PAST_META = {
     "metaData": {
         "id": PAST_CALL_ID,
-        "started": "2024-04-01T10:00:00Z",
-        "ended": "2024-04-01T11:00:00Z",
+        "started": "2024-04-30T10:00:00Z",
+        "ended": "2024-04-30T11:00:00Z",
         "duration": 3600,
         "title": "Past Call",
     }
@@ -26,12 +29,13 @@ PAST_META = {
 FUTURE_META = {
     "metaData": {
         "id": FUTURE_CALL_ID,
-        "started": "2024-06-01T10:00:00Z",
-        "ended": "2024-06-01T11:00:00Z",
+        "started": "2024-05-15T10:00:00Z",
+        "ended": "2024-05-15T11:00:00Z",
         "duration": 3600,
         "title": "Future Call",
     }
 }
+TEST_CURRENT_TIME = datetime(2026, 5, 8, 12, 0, 0, tzinfo=UTC)
 TRANSCRIPT_LINES = [
     {"speakerId": "u1", "text": "Hello", "start_ms": 1000},
     {"speakerId": "u2", "text": "Hi", "start_ms": 2000},
@@ -70,15 +74,30 @@ def archive_root(tmp_path, make_tar_xz):
 
 
 @pytest.fixture
-def client(archive_root, tmp_path, monkeypatch):
-    offset_file = tmp_path / "offset.json"
+def client(archive_root, monkeypatch):
     monkeypatch.setenv("ARCHIVE_ROOT", str(archive_root))
     monkeypatch.setenv("ARCHIVE_START_DATE", "2024-05-01")
-    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-06")
 
+    # Mock datetime.now(UTC) to return a fixed time for test predictability
     import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "OFFSET_FILE", offset_file)
+    import src.time_machine as tm_mod
+    import src.endpoints as ep_mod
+
+    monkeypatch.setattr(cfg_mod, "datetime", _MockDatetime(TEST_CURRENT_TIME))
+    monkeypatch.setattr(tm_mod, "datetime", _MockDatetime(TEST_CURRENT_TIME))
+    monkeypatch.setattr(ep_mod, "datetime", _MockDatetime(TEST_CURRENT_TIME))
 
     from src.main import app
     with TestClient(app) as c:
         yield c
+
+
+class _MockDatetime:
+    def __init__(self, fixed_time):
+        self.fixed_time = fixed_time
+
+    def now(self, tz=None):
+        return self.fixed_time
+
+    def fromisoformat(self, date_string):
+        return datetime.fromisoformat(date_string)

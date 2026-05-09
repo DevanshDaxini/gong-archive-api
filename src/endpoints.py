@@ -1,6 +1,6 @@
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from dateutil import parser as dateutil_parser
@@ -64,7 +64,7 @@ async def extensive(request: Request, body: ExtensiveRequest) -> JSONResponse:
     hist_from = from_dt - timedelta(days=offset)
     hist_to = to_dt - timedelta(days=offset)
 
-    if hist_from > datetime.now(timezone.utc).replace(tzinfo=None):
+    if hist_from > datetime.now(UTC).replace(tzinfo=None):
         return JSONResponse(
             status_code=400,
             content={

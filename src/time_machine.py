@@ -1,6 +1,6 @@
 import copy
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from dateutil import parser as dateutil_parser
 
@@ -10,7 +10,7 @@ _DATETIME_FIELDS = {"started", "ended", "scheduled", "created", "updated"}
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc).replace(tzinfo=None)
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 def remap_datetime(dt_str: str, offset_days: int) -> str:

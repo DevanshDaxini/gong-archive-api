@@ -19,12 +19,9 @@ def config_with_archive(tmp_path, make_tar_xz, monkeypatch):
     }
     (gong / "05.tar.xz").write_bytes(make_tar_xz(members))
 
-    offset_file = tmp_path / "offset.json"
     monkeypatch.setenv("ARCHIVE_ROOT", str(tmp_path))
     monkeypatch.setenv("ARCHIVE_START_DATE", "2024-05-01")
-    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-06")
     import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "OFFSET_FILE", offset_file)
     return cfg_mod.Config()
 
 
@@ -54,12 +51,9 @@ def test_build_index_skips_malformed_json(tmp_path, make_tar_xz, monkeypatch):
     }
     (gong / "05.tar.xz").write_bytes(make_tar_xz(members))
 
-    offset_file = tmp_path / "offset.json"
     monkeypatch.setenv("ARCHIVE_ROOT", str(tmp_path))
     monkeypatch.setenv("ARCHIVE_START_DATE", "2024-05-01")
-    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-06")
     import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "OFFSET_FILE", offset_file)
     config = cfg_mod.Config()
 
     from src.index import build_index
@@ -68,12 +62,9 @@ def test_build_index_skips_malformed_json(tmp_path, make_tar_xz, monkeypatch):
 
 
 def test_build_index_empty_when_no_archives(tmp_path, monkeypatch):
-    offset_file = tmp_path / "offset.json"
     monkeypatch.setenv("ARCHIVE_ROOT", str(tmp_path))
     monkeypatch.setenv("ARCHIVE_START_DATE", "2024-05-01")
-    monkeypatch.setenv("VIRTUAL_START_DATE", "2026-05-06")
     import src.config as cfg_mod
-    monkeypatch.setattr(cfg_mod, "OFFSET_FILE", offset_file)
     config = cfg_mod.Config()
 
     from src.index import build_index
