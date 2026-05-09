@@ -2,27 +2,37 @@
 
 A FastAPI service that serves archived Gong call data with a **Time Machine** feature — historical call timestamps are shifted forward so the archive appears to be a live, ongoing dataset.
 
+## Status
+
+✅ **Complete.** All 5 phases implemented and tested:
+- **Phase 1:** Config + FastAPI (dynamic offset calculation, no persistence)
+- **Phase 2:** Archive reader with python-xz + O(1) indexing
+- **Phase 3:** Time machine logic (remapping + gating)
+- **Phase 4:** REST endpoints (`/v2/calls/extensive`, `/v2/calls/transcript`)
+- **Phase 5:** Test suite (32 tests, all passing)
+
 ## How It Works
 
-### Time Machine Engine
+### Time Machine Engine (Dynamic)
 
-On startup, the service calculates a `TIME_OFFSET` (the difference between `ARCHIVE_START_DATE` and `VIRTUAL_START_DATE`). This offset is persisted to `offset.json` and never recalculated, ensuring consistent results across restarts.
+On every startup, the service calculates a fresh `TIME_OFFSET = (today - ARCHIVE_START_DATE).days`. This offset is **never persisted** — it's recalculated each time the service starts, ensuring the data window continuously advances with real time.
 
-All API responses return timestamps shifted forward by the offset. Calls whose shifted end time is still in the future are hidden (gated out), making the archive feel like a live feed.
+All API responses return timestamps shifted forward by the offset. Calls whose shifted end time is still in the future are hidden (gated out), making the archive feel like a live feed that grows incrementally.
 
 **Example:**
-- Archive contains call from 2024-05-03 10:00 AM
-- ARCHIVE_START_DATE: 2024-05-01, VIRTUAL_START_DATE: 2026-05-06
-- TIME_OFFSET: 735 days
-- Call appears to user as 2026-05-08 10:00 AM
+- Archive contains call from 2025-05-01 10:00 AM
+- ARCHIVE_START_DATE: 2025-01-01
+- Day 1 (May 8, 2026): TIME_OFFSET = 493 days → call appears as 2026-05-08 10:00 AM
+- Day 2 (May 9, 2026): TIME_OFFSET = 494 days → same call appears as 2026-05-09 10:00 AM
 - Current system time used as gating boundary — calls beyond current time are excluded
+- **Key benefit:** Archive automatically appears to have new data each day. Solves "not running once a month" issue.
 
 ### Architecture
 
 | Component | Purpose |
 |-----------|---------|
-| `config.py` | Load environment config, calculate and persist TIME_OFFSET |
-| `reader.py` | Stream XZ-compressed tar archives without full decompression |
+| `config.py` | Load environment config, calculate TIME_OFFSET dynamically at each startup |
+| `reader.py` | Stream XZ-compressed tar archives without full decompression (python-xz + fallback) |
 | `index.py` | Build in-memory call ID → tar path + member name mapping at startup (O(1) lookup) |
 | `time_machine.py` | Remap timestamps (ISO 8601 strings) and apply gating logic |
 | `endpoints.py` | REST API handlers for `/v2/calls/extensive` and `/v2/calls/transcript` |
@@ -61,8 +71,9 @@ Set these environment variables before starting the server:
 | Variable | Description | Example |
 |----------|-------------|---------|
 | `ARCHIVE_ROOT` | Path to your archive directory | `/data/gong-archive` |
-| `ARCHIVE_START_DATE` | Real date your oldest call data begins | `2024-05-01` |
-| `VIRTUAL_START_DATE` | Date you want the archive to appear to start from | `2026-05-06` |
+| `ARCHIVE_START_DATE` | Real date your oldest call data begins (ISO 8601) | `2025-01-01` |
+
+The offset is calculated dynamically: `TIME_OFFSET = (today - ARCHIVE_START_DATE).days`. No configuration needed for the target date — it always uses the current system time.
 
 The archive must be structured as:
 ```
@@ -75,11 +86,16 @@ Each `.tar.xz` contains `.metadata.jsonl` and `.tx.jsonl` files per call.
 
 ```bash
 export ARCHIVE_ROOT=/path/to/archive
-export ARCHIVE_START_DATE=2024-05-01
-export VIRTUAL_START_DATE=2026-05-06
+export ARCHIVE_START_DATE=2025-01-01
 
 uvicorn src.main:app --reload --port 8000
 ```
+
+On startup, the service will:
+1. Calculate TIME_OFFSET dynamically from ARCHIVE_START_DATE
+2. Scan and index all calls in the archive
+3. Start listening on port 8000
+4. Log: `TIME_OFFSET: {N} days (calculated from ARCHIVE_START_DATE: 2025-01-01)`
 
 ## Endpoints
 
@@ -180,14 +196,22 @@ On startup, the service scans all `.metadata.jsonl` files in the archive and bui
 ### Gating Logic
 Future calls are excluded before JSON parsing to avoid unnecessary work. The `ended` field is checked first; if missing, the service falls back to `started + duration_seconds`.
 
-## Tests
+## Testing
 
+Run all tests:
 ```bash
 pytest -v
 ```
 
-Run tests after changes to verify:
-- Timestamp remapping correctness
+**Test Coverage (32 tests):**
+- **Config** (3): Dynamic offset calculation, fresh calculation on each startup, env loading
+- **Endpoints** (11): Health check, extensive queries, transcript lookup, future call gating, error responses
+- **Index** (4): Index building, entry structure, malformed JSON handling, empty archives
+- **Reader** (5): Member listing, content reading, missing file handling, fallback decompression
+- **Time Machine** (9): Datetime remapping, time-of-day preservation, gating logic, record remapping
+
+All tests use mocked current time (2026-05-08) for reproducibility. Run after changes to verify:
+- Timestamp remapping correctness (offset applied correctly)
 - Gating logic (future calls excluded, past calls included)
-- Archive reading and indexing
-- Error handling (malformed JSON, missing archives, invalid dates)
+- Archive reading and indexing (O(1) lookup, fallback handling)
+- Error handling (malformed JSON, missing archives, invalid dates, future date ranges)
